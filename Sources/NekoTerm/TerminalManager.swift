@@ -13,21 +13,32 @@ var terminalStates: [TerminalState] = []
 var selectedTerminalId: UUID?
 var lastSelectedInGroup: [String: UUID] = [:]  // projectName -> last selected terminal id
 
-func createTerminal(delegate: LocalProcessTerminalViewDelegate) -> TerminalState {
+func createTerminal(delegate: LocalProcessTerminalViewDelegate, directory: String? = nil) -> TerminalState {
     let terminalView = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     terminalView.processDelegate = delegate
 
     let shell = getShell()
     let shellIdiom = "-" + (shell as NSString).lastPathComponent
-    FileManager.default.changeCurrentDirectoryPath(FileManager.default.homeDirectoryForCurrentUser.path)
+
+    // ディレクトリが指定されていて存在する場合はそこで起動
+    var startDir: String? = nil
+    if let dir = directory, FileManager.default.fileExists(atPath: dir) {
+        startDir = dir
+    }
+
+    if let dir = startDir {
+        FileManager.default.changeCurrentDirectoryPath(dir)
+    } else {
+        FileManager.default.changeCurrentDirectoryPath(FileManager.default.homeDirectoryForCurrentUser.path)
+    }
     terminalView.startProcess(executable: shell, execName: shellIdiom)
 
     let state = TerminalState(
         id: UUID(),
         terminalView: terminalView,
-        currentDirectory: nil,
+        currentDirectory: startDir,
         title: "Terminal",
-        projectName: "~"
+        projectName: extractProjectName(from: startDir)
     )
     terminalStates.append(state)
     return state
@@ -90,4 +101,20 @@ func getLastSelectedInGroup(groupIndex: Int) -> UUID? {
     }
     // なければグループの最初のターミナルを返す
     return group.terminalIds.first
+}
+
+// MARK: - State Persistence
+
+private let savedTerminalsKey = "savedTerminals"
+
+func saveTerminalStates() {
+    let directories = terminalStates.compactMap { $0.currentDirectory }
+    print("Saving terminal directories: \(directories)")
+    UserDefaults.standard.set(directories, forKey: savedTerminalsKey)
+}
+
+func loadSavedTerminalDirectories() -> [String] {
+    let dirs = UserDefaults.standard.stringArray(forKey: savedTerminalsKey) ?? []
+    print("Loading terminal directories: \(dirs)")
+    return dirs
 }

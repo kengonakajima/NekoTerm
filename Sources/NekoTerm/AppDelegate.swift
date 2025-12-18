@@ -49,9 +49,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         // 右ペイン（ターミナルコンテナ）
         terminalContainer = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: contentBounds.height))
 
-        // 最初のターミナルを作成
-        let state = createTerminal(delegate: self)
-        selectTerminal(id: state.id)
+        // 保存されたターミナルを復元、なければ新規作成
+        let savedDirs = loadSavedTerminalDirectories()
+        print("Restoring \(savedDirs.count) terminals")
+        if savedDirs.isEmpty {
+            print("No saved terminals, creating new one")
+            let state = createTerminal(delegate: self)
+            selectTerminal(id: state.id)
+        } else {
+            for dir in savedDirs {
+                print("Creating terminal for directory: \(dir)")
+                let state = createTerminal(delegate: self, directory: dir)
+                if terminalStates.count == 1 {
+                    selectTerminal(id: state.id)
+                }
+            }
+        }
         treeView.reloadTerminals()
         showSelectedTerminal()
 
@@ -206,6 +219,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         return true
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        saveTerminalStates()
+    }
+
     // MARK: - LocalProcessTerminalViewDelegate
 
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
@@ -223,7 +240,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
         if let state = terminalStates.first(where: { $0.terminalView === source }) {
-            updateTerminalDirectory(id: state.id, directory: directory)
+            // URL形式の場合はパスに変換
+            var path = directory
+            if let dir = directory, let url = URL(string: dir) {
+                path = url.path
+            }
+            updateTerminalDirectory(id: state.id, directory: path)
+            saveTerminalStates()
         }
     }
 
