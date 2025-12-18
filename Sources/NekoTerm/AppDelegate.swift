@@ -5,9 +5,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
     var window: NSWindow!
     var splitView: NSSplitView!
     var leftPane: NSScrollView!
-    var terminal: LocalProcessTerminalView!
+    var terminalContainer: NSView!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMenu()
+
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -31,17 +33,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         leftPane.drawsBackground = true
         leftPane.backgroundColor = NSColor(white: 0.1, alpha: 1.0)
 
-        // 右ペイン（ターミナル）
-        terminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: contentBounds.height))
-        terminal.processDelegate = self
+        // 右ペイン（ターミナルコンテナ）
+        terminalContainer = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: contentBounds.height))
 
-        let shell = getShell()
-        let shellIdiom = "-" + (shell as NSString).lastPathComponent
-        FileManager.default.changeCurrentDirectoryPath(FileManager.default.homeDirectoryForCurrentUser.path)
-        terminal.startProcess(executable: shell, execName: shellIdiom)
+        // 最初のターミナルを作成
+        let state = createTerminal(delegate: self)
+        selectTerminal(id: state.id)
+        showSelectedTerminal()
 
         splitView.addArrangedSubview(leftPane)
-        splitView.addArrangedSubview(terminal)
+        splitView.addArrangedSubview(terminalContainer)
 
         window.contentView?.addSubview(splitView)
 
@@ -50,6 +51,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func setupMenu() {
+        let mainMenu = NSMenu()
+
+        // App menu
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit NekoTerm", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // Shell menu
+        let shellMenuItem = NSMenuItem()
+        let shellMenu = NSMenu(title: "Shell")
+        shellMenu.addItem(withTitle: "New Tab", action: #selector(newTab(_:)), keyEquivalent: "t")
+        shellMenuItem.submenu = shellMenu
+        mainMenu.addItem(shellMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    @objc func newTab(_ sender: Any?) {
+        let state = createTerminal(delegate: self)
+        selectTerminal(id: state.id)
+        showSelectedTerminal()
+    }
+
+    func showSelectedTerminal() {
+        // 既存のターミナルビューを削除
+        for subview in terminalContainer.subviews {
+            subview.removeFromSuperview()
+        }
+
+        // 選択中のターミナルを表示
+        if let state = getSelectedTerminal() {
+            state.terminalView.frame = terminalContainer.bounds
+            state.terminalView.autoresizingMask = [.width, .height]
+            terminalContainer.addSubview(state.terminalView)
+            window.makeFirstResponder(state.terminalView)
+        }
     }
 
     // MARK: - NSSplitViewDelegate
@@ -66,32 +108,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         return true
     }
 
-    func getShell() -> String {
-        let bufsize = sysconf(_SC_GETPW_R_SIZE_MAX)
-        guard bufsize != -1 else { return "/bin/zsh" }
-        let buffer = UnsafeMutablePointer<Int8>.allocate(capacity: bufsize)
-        defer { buffer.deallocate() }
-        var pwd = passwd()
-        var result: UnsafeMutablePointer<passwd>? = UnsafeMutablePointer<passwd>.allocate(capacity: 1)
-        if getpwuid_r(getuid(), &pwd, buffer, bufsize, &result) != 0 {
-            return "/bin/zsh"
-        }
-        return String(cString: pwd.pw_shell)
-    }
-
     // MARK: - LocalProcessTerminalViewDelegate
 
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
     }
 
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
-        window.title = title.isEmpty ? "NekoTerm" : title
+        if let state = terminalStates.first(where: { $0.terminalView === source }) {
+            updateTerminalTitle(id: state.id, title: title)
+        }
+        if let selected = getSelectedTerminal(), selected.terminalView === source {
+            window.title = title.isEmpty ? "NekoTerm" : title
+        }
     }
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        if let state = terminalStates.first(where: { $0.terminalView === source }) {
+            updateTerminalDirectory(id: state.id, directory: directory)
+        }
     }
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
-        NSApp.terminate(nil)
+        if let state = terminalStates.first(where: { $0.terminalView === source }) {
+            removeTerminal(id: state.id)
+            if terminalStates.isEmpty {
+                NSApp.terminate(nil)
+            } else {
+                showSelectedTerminal()
+            }
+        }
     }
 }
