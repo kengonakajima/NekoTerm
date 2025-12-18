@@ -51,14 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
 
         // 保存されたターミナルを復元、なければ新規作成
         let savedDirs = loadSavedTerminalDirectories()
-        print("Restoring \(savedDirs.count) terminals")
         if savedDirs.isEmpty {
-            print("No saved terminals, creating new one")
             let state = createTerminal(delegate: self)
             selectTerminal(id: state.id)
         } else {
             for dir in savedDirs {
-                print("Creating terminal for directory: \(dir)")
                 let state = createTerminal(delegate: self, directory: dir)
                 if terminalStates.count == 1 {
                     selectTerminal(id: state.id)
@@ -84,42 +81,54 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
 
     func setupKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            print("Key event: \(event.charactersIgnoringModifiers ?? "nil"), modifiers: \(event.modifierFlags.rawValue)")
             if self?.handleKeyEvent(event) == true {
-                return nil  // イベントを消費
+                return nil
             }
             return event
         }
     }
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Cmd+数字の検出
         guard event.modifierFlags.contains(.command) else {
-            print("No command key")
             return false
         }
 
+        // Cmd+Shift+上下矢印: グループ間移動
+        if event.modifierFlags.contains(.shift) {
+            if event.keyCode == 126 { // Up
+                selectPreviousGroup()
+                return true
+            } else if event.keyCode == 125 { // Down
+                selectNextGroup()
+                return true
+            }
+        }
+
+        // Cmd+上下矢印: ターミナル間移動
+        if event.keyCode == 126 { // Up
+            selectPreviousTerminal()
+            return true
+        } else if event.keyCode == 125 { // Down
+            selectNextTerminal()
+            return true
+        }
+
+        // Cmd+数字: 2ストローク選択
         guard let number = numberFromEvent(event) else {
-            print("Not a number")
             return false
         }
-
-        print("Number: \(number), pending: \(String(describing: pendingGroupIndex))")
 
         // 2ストローク目（pending中に数字が押された）
         if let pending = pendingGroupIndex {
-            print("Second stroke: group=\(pending), terminal=\(number - 1)")
             selectTerminalInGroup(groupIndex: pending, terminalIndex: number - 1)
             cancelPendingSelection()
             return true
         }
 
         // 1ストローク目（グループ選択モードに入る）
-        print("First stroke: setting pending to \(number - 1)")
         pendingGroupIndex = number - 1
         pendingTimer?.invalidate()
         pendingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            print("Timeout, selecting last in group")
             self?.selectLastInPendingGroup()
         }
         return true
@@ -161,6 +170,70 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
             showSelectedTerminal()
         }
         cancelPendingSelection()
+    }
+
+    func selectPreviousTerminal() {
+        guard let currentId = selectedTerminalId,
+              let currentIndex = terminalStates.firstIndex(where: { $0.id == currentId }) else { return }
+        let newIndex = currentIndex > 0 ? currentIndex - 1 : terminalStates.count - 1
+        selectTerminal(id: terminalStates[newIndex].id)
+        treeView.reloadTerminals()
+        showSelectedTerminal()
+    }
+
+    func selectNextTerminal() {
+        guard let currentId = selectedTerminalId,
+              let currentIndex = terminalStates.firstIndex(where: { $0.id == currentId }) else { return }
+        let newIndex = (currentIndex + 1) % terminalStates.count
+        selectTerminal(id: terminalStates[newIndex].id)
+        treeView.reloadTerminals()
+        showSelectedTerminal()
+    }
+
+    func selectPreviousGroup() {
+        let groups = buildProjectGroups()
+        guard groups.count > 1 else { return }
+        guard let currentId = selectedTerminalId else { return }
+
+        // 現在のグループを見つける
+        var currentGroupIndex = 0
+        for (i, group) in groups.enumerated() {
+            if group.terminalIds.contains(currentId) {
+                currentGroupIndex = i
+                break
+            }
+        }
+
+        // 前のグループに移動
+        let newGroupIndex = currentGroupIndex > 0 ? currentGroupIndex - 1 : groups.count - 1
+        if let terminalId = getLastSelectedInGroup(groupIndex: newGroupIndex) {
+            selectTerminal(id: terminalId)
+            treeView.reloadTerminals()
+            showSelectedTerminal()
+        }
+    }
+
+    func selectNextGroup() {
+        let groups = buildProjectGroups()
+        guard groups.count > 1 else { return }
+        guard let currentId = selectedTerminalId else { return }
+
+        // 現在のグループを見つける
+        var currentGroupIndex = 0
+        for (i, group) in groups.enumerated() {
+            if group.terminalIds.contains(currentId) {
+                currentGroupIndex = i
+                break
+            }
+        }
+
+        // 次のグループに移動
+        let newGroupIndex = (currentGroupIndex + 1) % groups.count
+        if let terminalId = getLastSelectedInGroup(groupIndex: newGroupIndex) {
+            selectTerminal(id: terminalId)
+            treeView.reloadTerminals()
+            showSelectedTerminal()
+        }
     }
 
     func setupMenu() {

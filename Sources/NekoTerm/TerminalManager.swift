@@ -109,12 +109,9 @@ private let savedTerminalsKey = "savedTerminals"
 
 func saveTerminalStates() {
     let directories = terminalStates.compactMap { $0.currentDirectory }
-    print("Saving terminal directories: \(directories)")
     UserDefaults.standard.set(directories, forKey: savedTerminalsKey)
 }
 
 func loadSavedTerminalDirectories() -> [String] {
-    let dirs = UserDefaults.standard.stringArray(forKey: savedTerminalsKey) ?? []
-    print("Loading terminal directories: \(dirs)")
-    return dirs
+    return UserDefaults.standard.stringArray(forKey: savedTerminalsKey) ?? []
 }
