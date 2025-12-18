@@ -8,6 +8,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
     var treeView: TreeView!
     var terminalContainer: NSView!
 
+    // 2ストローク選択用
+    var pendingGroupIndex: Int? = nil
+    var pendingTimer: Timer? = nil
+    var keyMonitor: Any? = nil
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenu()
 
@@ -60,6 +65,89 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        setupKeyMonitor()
+    }
+
+    func setupKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            print("Key event: \(event.charactersIgnoringModifiers ?? "nil"), modifiers: \(event.modifierFlags.rawValue)")
+            if self?.handleKeyEvent(event) == true {
+                return nil  // イベントを消費
+            }
+            return event
+        }
+    }
+
+    func handleKeyEvent(_ event: NSEvent) -> Bool {
+        // Cmd+数字の検出
+        guard event.modifierFlags.contains(.command) else {
+            print("No command key")
+            return false
+        }
+
+        guard let number = numberFromEvent(event) else {
+            print("Not a number")
+            return false
+        }
+
+        print("Number: \(number), pending: \(String(describing: pendingGroupIndex))")
+
+        // 2ストローク目（pending中に数字が押された）
+        if let pending = pendingGroupIndex {
+            print("Second stroke: group=\(pending), terminal=\(number - 1)")
+            selectTerminalInGroup(groupIndex: pending, terminalIndex: number - 1)
+            cancelPendingSelection()
+            return true
+        }
+
+        // 1ストローク目（グループ選択モードに入る）
+        print("First stroke: setting pending to \(number - 1)")
+        pendingGroupIndex = number - 1
+        pendingTimer?.invalidate()
+        pendingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            print("Timeout, selecting last in group")
+            self?.selectLastInPendingGroup()
+        }
+        return true
+    }
+
+    func numberFromEvent(_ event: NSEvent) -> Int? {
+        guard let chars = event.charactersIgnoringModifiers,
+              let char = chars.first,
+              let number = Int(String(char)),
+              number >= 1 && number <= 9 else {
+            return nil
+        }
+        return number
+    }
+
+    func selectTerminalInGroup(groupIndex: Int, terminalIndex: Int) {
+        let groups = buildProjectGroups()
+        guard groupIndex < groups.count else { return }
+        let group = groups[groupIndex]
+        guard terminalIndex < group.terminalIds.count else { return }
+        let terminalId = group.terminalIds[terminalIndex]
+
+        selectTerminal(id: terminalId)
+        treeView.reloadTerminals()
+        showSelectedTerminal()
+    }
+
+    func cancelPendingSelection() {
+        pendingGroupIndex = nil
+        pendingTimer?.invalidate()
+        pendingTimer = nil
+    }
+
+    func selectLastInPendingGroup() {
+        if let groupIndex = pendingGroupIndex,
+           let terminalId = getLastSelectedInGroup(groupIndex: groupIndex) {
+            selectTerminal(id: terminalId)
+            treeView.reloadTerminals()
+            showSelectedTerminal()
+        }
+        cancelPendingSelection()
     }
 
     func setupMenu() {

@@ -11,6 +11,7 @@ struct TerminalState {
 
 var terminalStates: [TerminalState] = []
 var selectedTerminalId: UUID?
+var lastSelectedInGroup: [String: UUID] = [:]  // projectName -> last selected terminal id
 
 func createTerminal(delegate: LocalProcessTerminalViewDelegate) -> TerminalState {
     let terminalView = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
@@ -47,6 +48,10 @@ func getShell() -> String {
 
 func selectTerminal(id: UUID) {
     selectedTerminalId = id
+    // グループ内の最後の選択を記録
+    if let state = terminalStates.first(where: { $0.id == id }) {
+        lastSelectedInGroup[state.projectName] = id
+    }
 }
 
 func getSelectedTerminal() -> TerminalState? {
@@ -72,4 +77,17 @@ func updateTerminalTitle(id: UUID, title: String) {
     if let index = terminalStates.firstIndex(where: { $0.id == id }) {
         terminalStates[index].title = title
     }
+}
+
+func getLastSelectedInGroup(groupIndex: Int) -> UUID? {
+    let groups = buildProjectGroups()
+    guard groupIndex < groups.count else { return nil }
+    let group = groups[groupIndex]
+    // このグループで最後に選択したターミナルがあればそれを返す
+    if let lastId = lastSelectedInGroup[group.name],
+       group.terminalIds.contains(lastId) {
+        return lastId
+    }
+    // なければグループの最初のターミナルを返す
+    return group.terminalIds.first
 }

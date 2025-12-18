@@ -4,6 +4,19 @@ import SwiftTerm
 let previewRows = 5
 let previewCols = 40
 
+// 背景色を描画できるNSView
+class BackgroundView: NSView {
+    var backgroundColor: NSColor?
+
+    override func draw(_ dirtyRect: NSRect) {
+        if let color = backgroundColor {
+            color.setFill()
+            dirtyRect.fill()
+        }
+        super.draw(dirtyRect)
+    }
+}
+
 // プロジェクトグループを表すクラス
 class ProjectGroup {
     let name: String
@@ -170,7 +183,19 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func makeTerminalView(_ state: TerminalState) -> NSView {
-        let cellView = NSView()
+        let cellView = BackgroundView()
+
+        // 現在選択中か、グループ内で最後に選択されたターミナルか
+        let isCurrentlySelected = selectedTerminalId == state.id
+        let isLastSelectedInGroup = lastSelectedInGroup[state.projectName] == state.id
+
+        if isCurrentlySelected {
+            // 現在選択中: 明るい青
+            cellView.backgroundColor = NSColor(red: 0.15, green: 0.25, blue: 0.4, alpha: 1.0)
+        } else if isLastSelectedInGroup {
+            // グループ内で最後に選択: 暗い青
+            cellView.backgroundColor = NSColor(red: 0.08, green: 0.12, blue: 0.2, alpha: 1.0)
+        }
 
         // プレビューのみ
         let previewLabel = NSTextField(labelWithString: "")
