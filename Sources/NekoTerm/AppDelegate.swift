@@ -257,7 +257,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
     }
 
     @objc func newTab(_ sender: Any?) {
-        let state = createTerminal(delegate: self)
+        // 現在選択中のターミナルと同じディレクトリで新規作成
+        let currentDir = getSelectedTerminal()?.currentDirectory
+        let state = createTerminal(delegate: self, directory: currentDir)
         selectTerminal(id: state.id)
         treeView.reloadTerminals()
         showSelectedTerminal()
