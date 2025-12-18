@@ -111,9 +111,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let wc = activeWindowController(),
               let state = wc.getSelectedTerminal() else { return }
         let clipboard = NSPasteboard.general
+
+        // 画像がある場合は/tmpに保存してパスを貼り付け
+        if let image = clipboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
+            if let path = saveImageToTemp(image) {
+                state.terminalView.send(txt: path)
+                return
+            }
+        }
+
+        // テキストの場合はプレーンテキストとして直接送信
         if let text = clipboard.string(forType: .string) {
-            // プレーンテキストとして直接送信（bracketedPasteModeを使わない）
             state.terminalView.send(txt: text)
+        }
+    }
+
+    func saveImageToTemp(_ image: NSImage) -> String? {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let filename = "nekoterm_paste_\(timestamp).png"
+        let path = "/tmp/\(filename)"
+
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+
+        do {
+            try pngData.write(to: URL(fileURLWithPath: path))
+            return path
+        } catch {
+            return nil
         }
     }
 
