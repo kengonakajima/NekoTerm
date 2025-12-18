@@ -48,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Paste", action: #selector(pasteAsPlainText(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
@@ -105,6 +105,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func clearBuffer(_ sender: Any?) {
         activeWindowController()?.clearBuffer()
+    }
+
+    @objc func pasteAsPlainText(_ sender: Any?) {
+        guard let wc = activeWindowController(),
+              let state = wc.getSelectedTerminal() else { return }
+        let clipboard = NSPasteboard.general
+        if let text = clipboard.string(forType: .string) {
+            // プレーンテキストとして直接送信（bracketedPasteModeを使わない）
+            state.terminalView.send(txt: text)
+        }
     }
 
     @objc func makeFontBigger(_ sender: Any?) {
