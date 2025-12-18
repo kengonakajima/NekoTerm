@@ -105,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         print("First stroke: setting pending to \(number - 1)")
         pendingGroupIndex = number - 1
         pendingTimer?.invalidate()
-        pendingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+        pendingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
             print("Timeout, selecting last in group")
             self?.selectLastInPendingGroup()
         }
