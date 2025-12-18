@@ -51,6 +51,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         shellMenu.addItem(withTitle: "New Tab", action: #selector(newTab(_:)), keyEquivalent: "t")
         shellMenu.addItem(NSMenuItem.separator())
         shellMenu.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
+        shellMenu.addItem(NSMenuItem.separator())
+        shellMenu.addItem(withTitle: "Clear Buffer", action: #selector(clearBuffer(_:)), keyEquivalent: "k")
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
 
@@ -81,6 +83,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    @objc func clearBuffer(_ sender: Any?) {
+        activeWindowController()?.clearBuffer()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

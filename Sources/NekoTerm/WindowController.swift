@@ -267,6 +267,12 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         }
     }
 
+    func clearBuffer() {
+        guard let state = getSelectedTerminal() else { return }
+        // Ctrl-L を送信して画面クリア＋プロンプト再描画
+        state.terminalView.send(txt: "\u{0C}")
+    }
+
     // MARK: - Key Handling
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {
