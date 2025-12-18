@@ -1,13 +1,15 @@
 import AppKit
 import SwiftTerm
 
-class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDelegate, NSSplitViewDelegate {
     var window: NSWindow!
+    var splitView: NSSplitView!
+    var leftPane: NSScrollView!
     var terminal: LocalProcessTerminalView!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -15,8 +17,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         window.title = "NekoTerm"
         window.center()
 
-        terminal = LocalProcessTerminalView(frame: window.contentView!.bounds)
-        terminal.autoresizingMask = [.width, .height]
+        let contentBounds = window.contentView!.bounds
+
+        splitView = NSSplitView(frame: contentBounds)
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        splitView.autoresizingMask = [.width, .height]
+        splitView.delegate = self
+
+        // 左ペイン（ツリービュー用プレースホルダー）
+        leftPane = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: contentBounds.height))
+        leftPane.hasVerticalScroller = true
+        leftPane.drawsBackground = true
+        leftPane.backgroundColor = NSColor(white: 0.1, alpha: 1.0)
+
+        // 右ペイン（ターミナル）
+        terminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: contentBounds.height))
         terminal.processDelegate = self
 
         let shell = getShell()
@@ -24,10 +40,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, LocalProcessTerminalViewDele
         FileManager.default.changeCurrentDirectoryPath(FileManager.default.homeDirectoryForCurrentUser.path)
         terminal.startProcess(executable: shell, execName: shellIdiom)
 
-        window.contentView?.addSubview(terminal)
-        window.makeKeyAndOrderFront(nil)
+        splitView.addArrangedSubview(leftPane)
+        splitView.addArrangedSubview(terminal)
 
+        window.contentView?.addSubview(splitView)
+
+        splitView.setPosition(200, ofDividerAt: 0)
+        splitView.adjustSubviews()
+
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - NSSplitViewDelegate
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        return 150
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        return splitView.bounds.width - 400
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
