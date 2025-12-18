@@ -73,22 +73,6 @@ class ProjectGroup {
     }
 }
 
-func buildProjectGroups() -> [ProjectGroup] {
-    var groupMap: [String: ProjectGroup] = [:]
-    var orderedNames: [String] = []
-
-    for state in terminalStates {
-        let projectName = state.projectName
-        if groupMap[projectName] == nil {
-            groupMap[projectName] = ProjectGroup(name: projectName)
-            orderedNames.append(projectName)
-        }
-        groupMap[projectName]!.terminalIds.append(state.id)
-    }
-
-    return orderedNames.compactMap { groupMap[$0] }
-}
-
 let terminalPasteboardType = NSPasteboard.PasteboardType("com.nekoterm.terminal")
 let groupPasteboardType = NSPasteboard.PasteboardType("com.nekoterm.group")
 
@@ -99,6 +83,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     var projectGroups: [ProjectGroup] = []
     var draggedTerminalId: UUID?
     var draggedGroupName: String?
+    weak var windowController: WindowController?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -144,8 +129,9 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func refreshPreview() {
+        guard let wc = windowController else { return }
         isRefreshing = true
-        projectGroups = buildProjectGroups()
+        projectGroups = wc.buildProjectGroups()
         reloadData()
         expandAllGroups()
         selectCurrentTerminal()
@@ -153,8 +139,9 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func reloadTerminals() {
+        guard let wc = windowController else { return }
         isRefreshing = true
-        projectGroups = buildProjectGroups()
+        projectGroups = wc.buildProjectGroups()
         reloadData()
         expandAllGroups()
         selectCurrentTerminal()
@@ -168,7 +155,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func selectCurrentTerminal() {
-        guard let id = selectedTerminalId else { return }
+        guard let id = windowController?.selectedTerminalId else { return }
         let row = self.row(forItem: id)
         if row >= 0 {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -241,7 +228,8 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             guard let targetGroup = item as? ProjectGroup else { return [] }
 
             // 同じグループ内でのみ移動を許可
-            guard let draggedState = terminalStates.first(where: { $0.id == draggedId }) else { return [] }
+            guard let wc = windowController,
+                  let draggedState = wc.terminalStates.first(where: { $0.id == draggedId }) else { return [] }
             if draggedState.projectName != targetGroup.name { return [] }
 
             if index >= 0 {
@@ -253,10 +241,12 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        guard let wc = windowController else { return false }
+
         // グループのドロップ
         if let draggedGroup = draggedGroupName {
             if item == nil && index >= 0 {
-                let result = moveGroup(name: draggedGroup, toIndex: index)
+                let result = wc.moveGroup(name: draggedGroup, toIndex: index)
                 draggedGroupName = nil
                 if result {
                     reloadTerminals()
@@ -270,7 +260,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         if let draggedId = draggedTerminalId,
            let targetGroup = item as? ProjectGroup,
            index >= 0 {
-            let result = moveTerminal(id: draggedId, toIndex: index, inGroup: targetGroup.name)
+            let result = wc.moveTerminal(id: draggedId, toIndex: index, inGroup: targetGroup.name)
             draggedTerminalId = nil
             if result {
                 reloadTerminals()
@@ -300,7 +290,8 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             return makeGroupView(group)
         }
         if let terminalId = item as? UUID,
-           let state = terminalStates.first(where: { $0.id == terminalId }) {
+           let wc = windowController,
+           let state = wc.terminalStates.first(where: { $0.id == terminalId }) {
             return makeTerminalView(state)
         }
         return nil
@@ -334,8 +325,8 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let cellView = BackgroundView()
 
         // 現在選択中か、グループ内で最後に選択されたターミナルか
-        let isCurrentlySelected = selectedTerminalId == state.id
-        let isLastSelectedInGroup = lastSelectedInGroup[state.projectName] == state.id
+        let isCurrentlySelected = windowController?.selectedTerminalId == state.id
+        let isLastSelectedInGroup = windowController?.lastSelectedInGroup[state.projectName] == state.id
 
         if isCurrentlySelected {
             // 現在選択中: 明るい青
