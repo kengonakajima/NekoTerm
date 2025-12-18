@@ -276,6 +276,22 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         state.terminalView.send(txt: "\u{0C}")
     }
 
+    func changeFontSize(delta: CGFloat) {
+        for state in terminalStates {
+            let currentFont = state.terminalView.font
+            let newSize = max(8, currentFont.pointSize + delta)
+            if let newFont = NSFont(descriptor: currentFont.fontDescriptor, size: newSize) {
+                state.terminalView.font = newFont
+            }
+        }
+    }
+
+    func resetFontSize() {
+        for state in terminalStates {
+            state.terminalView.resetFontSize()
+        }
+    }
+
     // MARK: - Key Handling
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {

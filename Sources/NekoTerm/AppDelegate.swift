@@ -56,6 +56,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
 
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Bigger", action: #selector(makeFontBigger(_:)), keyEquivalent: "+")
+        viewMenu.addItem(withTitle: "Smaller", action: #selector(makeFontSmaller(_:)), keyEquivalent: "-")
+        viewMenu.addItem(withTitle: "Reset Font Size", action: #selector(resetFontSize(_:)), keyEquivalent: "0")
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
+
         NSApp.mainMenu = mainMenu
     }
 
@@ -87,6 +96,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func clearBuffer(_ sender: Any?) {
         activeWindowController()?.clearBuffer()
+    }
+
+    @objc func makeFontBigger(_ sender: Any?) {
+        activeWindowController()?.changeFontSize(delta: 1)
+    }
+
+    @objc func makeFontSmaller(_ sender: Any?) {
+        activeWindowController()?.changeFontSize(delta: -1)
+    }
+
+    @objc func resetFontSize(_ sender: Any?) {
+        activeWindowController()?.resetFontSize()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
