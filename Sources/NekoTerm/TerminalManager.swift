@@ -6,6 +6,7 @@ struct TerminalState {
     let terminalView: LocalProcessTerminalView
     var currentDirectory: String?
     var title: String
+    var projectName: String
 }
 
 var terminalStates: [TerminalState] = []
@@ -24,7 +25,8 @@ func createTerminal(delegate: LocalProcessTerminalViewDelegate) -> TerminalState
         id: UUID(),
         terminalView: terminalView,
         currentDirectory: nil,
-        title: "Terminal"
+        title: "Terminal",
+        projectName: "~"
     )
     terminalStates.append(state)
     return state
@@ -62,6 +64,7 @@ func removeTerminal(id: UUID) {
 func updateTerminalDirectory(id: UUID, directory: String?) {
     if let index = terminalStates.firstIndex(where: { $0.id == id }) {
         terminalStates[index].currentDirectory = directory
+        terminalStates[index].projectName = extractProjectName(from: directory)
     }
 }
 
