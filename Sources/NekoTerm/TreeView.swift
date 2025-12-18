@@ -135,7 +135,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         if item is ProjectGroup {
             return 24
         }
-        return CGFloat(previewRows * 14 + 24)
+        return CGFloat(previewRows * 12 + 8)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -144,9 +144,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         }
         if let terminalId = item as? UUID,
            let state = terminalStates.first(where: { $0.id == terminalId }) {
-            let index = projectGroups.first { $0.terminalIds.contains(terminalId) }?
-                .terminalIds.firstIndex(of: terminalId) ?? 0
-            return makeTerminalView(state, index: index)
+            return makeTerminalView(state)
         }
         return nil
     }
@@ -171,21 +169,10 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         return cellView
     }
 
-    func makeTerminalView(_ state: TerminalState, index: Int) -> NSView {
+    func makeTerminalView(_ state: TerminalState) -> NSView {
         let cellView = NSView()
 
-        // タイトル
-        let titleLabel = NSTextField(labelWithString: "")
-        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        titleLabel.textColor = .white
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        cellView.addSubview(titleLabel)
-
-        let displayTitle = state.title.isEmpty ? "Terminal" : state.title
-        titleLabel.stringValue = "\(index + 1). \(displayTitle)"
-
-        // プレビュー
+        // プレビューのみ
         let previewLabel = NSTextField(labelWithString: "")
         previewLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         previewLabel.textColor = NSColor(white: 0.8, alpha: 1.0)
@@ -201,13 +188,9 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.stringValue = getTerminalPreview(state.terminalView)
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 16),
-            titleLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
-            titleLabel.topAnchor.constraint(equalTo: cellView.topAnchor, constant: 4),
-
             previewLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 16),
             previewLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
-            previewLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            previewLabel.topAnchor.constraint(equalTo: cellView.topAnchor, constant: 4),
             previewLabel.bottomAnchor.constraint(equalTo: cellView.bottomAnchor, constant: -4)
         ])
 
@@ -219,18 +202,19 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let buffer = terminal.buffer
         var lines: [String] = []
 
-        let cursorRow = buffer.y
-        let startRow = max(0, cursorRow - previewRows + 1)
-        let endRow = cursorRow + 1
-
-        for row in startRow..<endRow {
+        // カーソル位置から上に遡って、コンテンツがある行を5行分取得
+        var row = buffer.y
+        while lines.count < previewRows && row >= 0 {
             if let line = terminal.getLine(row: row) {
                 var text = line.translateToString(trimRight: true)
-                if text.count > previewCols {
-                    text = String(text.prefix(previewCols))
+                if !text.isEmpty {
+                    if text.count > previewCols {
+                        text = String(text.prefix(previewCols))
+                    }
+                    lines.insert(text, at: 0)
                 }
-                lines.append(text)
             }
+            row -= 1
         }
 
         return lines.joined(separator: "\n")
