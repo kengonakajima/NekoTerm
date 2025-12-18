@@ -44,6 +44,7 @@ func buildProjectGroups() -> [ProjectGroup] {
 }
 
 let terminalPasteboardType = NSPasteboard.PasteboardType("com.nekoterm.terminal")
+let groupPasteboardType = NSPasteboard.PasteboardType("com.nekoterm.group")
 
 class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     var onSelectionChanged: ((UUID) -> Void)?
@@ -51,6 +52,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     var isRefreshing = false
     var projectGroups: [ProjectGroup] = []
     var draggedTerminalId: UUID?
+    var draggedGroupName: String?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -83,7 +85,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         indentationPerLevel = 0
 
         // ドラッグ&ドロップ設定
-        registerForDraggedTypes([terminalPasteboardType])
+        registerForDraggedTypes([terminalPasteboardType, groupPasteboardType])
         setDraggingSourceOperationMask(.move, forLocal: true)
 
         startRefreshTimer()
@@ -156,48 +158,86 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     // MARK: - Drag & Drop
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        // ターミナルのみドラッグ可能
-        guard let terminalId = item as? UUID else { return nil }
-        draggedTerminalId = terminalId
         let pasteboardItem = NSPasteboardItem()
-        pasteboardItem.setString(terminalId.uuidString, forType: terminalPasteboardType)
-        return pasteboardItem
+
+        // グループのドラッグ
+        if let group = item as? ProjectGroup {
+            draggedGroupName = group.name
+            draggedTerminalId = nil
+            pasteboardItem.setString(group.name, forType: groupPasteboardType)
+            return pasteboardItem
+        }
+
+        // ターミナルのドラッグ
+        if let terminalId = item as? UUID {
+            draggedTerminalId = terminalId
+            draggedGroupName = nil
+            pasteboardItem.setString(terminalId.uuidString, forType: terminalPasteboardType)
+            return pasteboardItem
+        }
+
+        return nil
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        guard let draggedId = draggedTerminalId else { return [] }
-
-        // ドロップ先がグループの場合のみ許可
-        guard let targetGroup = item as? ProjectGroup else { return [] }
-
-        // 同じグループ内でのみ移動を許可
-        guard let draggedState = terminalStates.first(where: { $0.id == draggedId }) else { return [] }
-        if draggedState.projectName != targetGroup.name { return [] }
-
-        // 有効なインデックスの場合のみ許可
-        if index >= 0 {
-            return .move
+        // グループのドラッグ
+        if draggedGroupName != nil {
+            // ルートレベル（item == nil）へのドロップのみ許可
+            if item == nil && index >= 0 {
+                return .move
+            }
+            return []
         }
+
+        // ターミナルのドラッグ
+        if let draggedId = draggedTerminalId {
+            // ドロップ先がグループの場合のみ許可
+            guard let targetGroup = item as? ProjectGroup else { return [] }
+
+            // 同じグループ内でのみ移動を許可
+            guard let draggedState = terminalStates.first(where: { $0.id == draggedId }) else { return [] }
+            if draggedState.projectName != targetGroup.name { return [] }
+
+            if index >= 0 {
+                return .move
+            }
+        }
+
         return []
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        guard let draggedId = draggedTerminalId,
-              let targetGroup = item as? ProjectGroup,
-              index >= 0 else { return false }
-
-        // terminalStates内での移動を実行
-        let result = moveTerminal(id: draggedId, toIndex: index, inGroup: targetGroup.name)
-        draggedTerminalId = nil
-
-        if result {
-            reloadTerminals()
+        // グループのドロップ
+        if let draggedGroup = draggedGroupName {
+            if item == nil && index >= 0 {
+                let result = moveGroup(name: draggedGroup, toIndex: index)
+                draggedGroupName = nil
+                if result {
+                    reloadTerminals()
+                }
+                return result
+            }
+            return false
         }
-        return result
+
+        // ターミナルのドロップ
+        if let draggedId = draggedTerminalId,
+           let targetGroup = item as? ProjectGroup,
+           index >= 0 {
+            let result = moveTerminal(id: draggedId, toIndex: index, inGroup: targetGroup.name)
+            draggedTerminalId = nil
+            if result {
+                reloadTerminals()
+            }
+            return result
+        }
+
+        return false
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         draggedTerminalId = nil
+        draggedGroupName = nil
     }
 
     // MARK: - NSOutlineViewDelegate

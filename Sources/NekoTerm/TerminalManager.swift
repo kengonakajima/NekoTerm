@@ -142,6 +142,42 @@ func moveTerminal(id: UUID, toIndex targetIndex: Int, inGroup groupName: String)
     return true
 }
 
+func moveGroup(name: String, toIndex targetIndex: Int) -> Bool {
+    let groups = buildProjectGroups()
+    guard let sourceIndex = groups.firstIndex(where: { $0.name == name }) else { return false }
+    if sourceIndex == targetIndex || sourceIndex == targetIndex - 1 { return false }
+
+    // グループに属するターミナルを抽出
+    let groupTerminals = terminalStates.filter { $0.projectName == name }
+    if groupTerminals.isEmpty { return false }
+
+    // グループのターミナルを一旦削除
+    terminalStates.removeAll { $0.projectName == name }
+
+    // 挿入位置を計算
+    var insertIndex: Int
+    if targetIndex <= 0 {
+        insertIndex = 0
+    } else if targetIndex >= groups.count {
+        insertIndex = terminalStates.count
+    } else {
+        // targetIndexの位置にあるグループの最初のターミナルの位置を探す
+        let targetGroupName = groups[targetIndex].name
+        if let firstOfTarget = terminalStates.firstIndex(where: { $0.projectName == targetGroupName }) {
+            insertIndex = firstOfTarget
+        } else {
+            insertIndex = terminalStates.count
+        }
+    }
+
+    // グループのターミナルを挿入
+    for (i, terminal) in groupTerminals.enumerated() {
+        terminalStates.insert(terminal, at: insertIndex + i)
+    }
+
+    return true
+}
+
 // MARK: - State Persistence
 
 private let savedTerminalsKey = "savedTerminals"
