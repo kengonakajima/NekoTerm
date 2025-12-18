@@ -103,6 +103,45 @@ func getLastSelectedInGroup(groupIndex: Int) -> UUID? {
     return group.terminalIds.first
 }
 
+func moveTerminal(id: UUID, toIndex targetIndex: Int, inGroup groupName: String) -> Bool {
+    // 同じグループ内のターミナルを取得
+    let groupTerminals = terminalStates.enumerated().filter { $0.element.projectName == groupName }
+    guard let sourceEntry = groupTerminals.first(where: { $0.element.id == id }) else { return false }
+
+    let sourceGlobalIndex = sourceEntry.offset
+
+    // グループ内での新しい位置を計算
+    var targetGlobalIndex: Int
+    if targetIndex >= groupTerminals.count {
+        // 最後に移動
+        if let lastInGroup = groupTerminals.last {
+            targetGlobalIndex = lastInGroup.offset
+        } else {
+            return false
+        }
+    } else if targetIndex <= 0 {
+        // 最初に移動
+        if let firstInGroup = groupTerminals.first {
+            targetGlobalIndex = firstInGroup.offset
+        } else {
+            return false
+        }
+    } else {
+        // 指定位置に移動
+        targetGlobalIndex = groupTerminals[targetIndex].offset
+    }
+
+    // 同じ位置なら何もしない
+    if sourceGlobalIndex == targetGlobalIndex { return false }
+
+    // 移動実行
+    let state = terminalStates.remove(at: sourceGlobalIndex)
+    let adjustedTarget = sourceGlobalIndex < targetGlobalIndex ? targetGlobalIndex - 1 : targetGlobalIndex
+    terminalStates.insert(state, at: adjustedTarget)
+
+    return true
+}
+
 // MARK: - State Persistence
 
 private let savedTerminalsKey = "savedTerminals"

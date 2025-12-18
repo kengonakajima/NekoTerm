@@ -43,11 +43,14 @@ func buildProjectGroups() -> [ProjectGroup] {
     return orderedNames.compactMap { groupMap[$0] }
 }
 
+let terminalPasteboardType = NSPasteboard.PasteboardType("com.nekoterm.terminal")
+
 class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     var onSelectionChanged: ((UUID) -> Void)?
     var refreshTimer: Timer?
     var isRefreshing = false
     var projectGroups: [ProjectGroup] = []
+    var draggedTerminalId: UUID?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -78,6 +81,10 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         selectionHighlightStyle = .regular
         allowsEmptySelection = false
         indentationPerLevel = 0
+
+        // ドラッグ&ドロップ設定
+        registerForDraggedTypes([terminalPasteboardType])
+        setDraggingSourceOperationMask(.move, forLocal: true)
 
         startRefreshTimer()
     }
@@ -144,6 +151,53 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         return item is ProjectGroup
+    }
+
+    // MARK: - Drag & Drop
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        // ターミナルのみドラッグ可能
+        guard let terminalId = item as? UUID else { return nil }
+        draggedTerminalId = terminalId
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(terminalId.uuidString, forType: terminalPasteboardType)
+        return pasteboardItem
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        guard let draggedId = draggedTerminalId else { return [] }
+
+        // ドロップ先がグループの場合のみ許可
+        guard let targetGroup = item as? ProjectGroup else { return [] }
+
+        // 同じグループ内でのみ移動を許可
+        guard let draggedState = terminalStates.first(where: { $0.id == draggedId }) else { return [] }
+        if draggedState.projectName != targetGroup.name { return [] }
+
+        // 有効なインデックスの場合のみ許可
+        if index >= 0 {
+            return .move
+        }
+        return []
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        guard let draggedId = draggedTerminalId,
+              let targetGroup = item as? ProjectGroup,
+              index >= 0 else { return false }
+
+        // terminalStates内での移動を実行
+        let result = moveTerminal(id: draggedId, toIndex: index, inGroup: targetGroup.name)
+        draggedTerminalId = nil
+
+        if result {
+            reloadTerminals()
+        }
+        return result
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        draggedTerminalId = nil
     }
 
     // MARK: - NSOutlineViewDelegate
