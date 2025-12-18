@@ -49,6 +49,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let shellMenu = NSMenu(title: "Shell")
         shellMenu.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n")
         shellMenu.addItem(withTitle: "New Tab", action: #selector(newTab(_:)), keyEquivalent: "t")
+        shellMenu.addItem(NSMenuItem.separator())
+        shellMenu.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
 
@@ -64,6 +66,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newTab(_ sender: Any?) {
         activeWindowController()?.newTab()
+    }
+
+    @objc func closeTab(_ sender: Any?) {
+        if let wc = activeWindowController() {
+            wc.closeCurrentTerminal()
+            // ウィンドウのターミナルが全部なくなったらウィンドウを閉じる
+            if wc.terminalStates.isEmpty {
+                wc.window.close()
+                windowControllers.removeAll { $0 === wc }
+                // ウィンドウが1個もなくなったらアプリを終了
+                if windowControllers.isEmpty {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

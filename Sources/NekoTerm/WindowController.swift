@@ -258,6 +258,15 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         showSelectedTerminal()
     }
 
+    func closeCurrentTerminal() {
+        guard let id = selectedTerminalId else { return }
+        removeTerminal(id: id)
+        if !terminalStates.isEmpty {
+            treeView.reloadTerminals()
+            showSelectedTerminal()
+        }
+    }
+
     // MARK: - Key Handling
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {
