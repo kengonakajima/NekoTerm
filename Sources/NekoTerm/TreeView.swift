@@ -175,7 +175,11 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         cellView.addSubview(titleLabel)
 
-        titleLabel.stringValue = "~/\(group.name)"
+        if group.name == "~" {
+            titleLabel.stringValue = "~"
+        } else {
+            titleLabel.stringValue = "~/\(group.name)"
+        }
 
         NSLayoutConstraint.activate([
             titleLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),

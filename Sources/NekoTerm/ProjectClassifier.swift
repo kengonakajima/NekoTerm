@@ -1,7 +1,7 @@
 import Foundation
 
 func extractProjectName(from directory: String?) -> String {
-    guard let dir = directory else { return "Unknown" }
+    guard let dir = directory else { return "~" }
 
     // file:// URL形式の場合
     if dir.hasPrefix("file://") {
