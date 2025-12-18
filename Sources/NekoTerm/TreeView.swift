@@ -4,6 +4,52 @@ import SwiftTerm
 let previewRows = 5
 let previewCols = 40
 
+// ANSI 256 color palette
+let ansi256Colors: [NSColor] = {
+    var colors: [NSColor] = []
+
+    // Basic 16 colors (xterm style)
+    let basic: [(CGFloat, CGFloat, CGFloat)] = [
+        (0, 0, 0), (205, 0, 0), (0, 205, 0), (205, 205, 0),
+        (0, 0, 238), (205, 0, 205), (0, 205, 205), (229, 229, 229),
+        (127, 127, 127), (255, 0, 0), (0, 255, 0), (255, 255, 0),
+        (92, 92, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255)
+    ]
+    for (r, g, b) in basic {
+        colors.append(NSColor(red: r/255, green: g/255, blue: b/255, alpha: 1))
+    }
+
+    // 216 colors (6x6x6 cube)
+    let v: [CGFloat] = [0, 95, 135, 175, 215, 255]
+    for i in 0..<216 {
+        let r = v[(i / 36) % 6]
+        let g = v[(i / 6) % 6]
+        let b = v[i % 6]
+        colors.append(NSColor(red: r/255, green: g/255, blue: b/255, alpha: 1))
+    }
+
+    // 24 greyscales
+    for i in 0..<24 {
+        let c = CGFloat(8 + i * 10) / 255
+        colors.append(NSColor(red: c, green: c, blue: c, alpha: 1))
+    }
+
+    return colors
+}()
+
+func mapAttributeColor(_ color: Attribute.Color, isForeground: Bool, nativeFg: NSColor, nativeBg: NSColor) -> NSColor {
+    switch color {
+    case .defaultColor:
+        return isForeground ? nativeFg : nativeBg
+    case .defaultInvertedColor:
+        return isForeground ? nativeBg : nativeFg
+    case .ansi256(let code):
+        return ansi256Colors[Int(code) % 256]
+    case .trueColor(let r, let g, let b):
+        return NSColor(red: CGFloat(r)/255, green: CGFloat(g)/255, blue: CGFloat(b)/255, alpha: 1)
+    }
+}
+
 // 背景色を描画できるNSView
 class BackgroundView: NSView {
     var backgroundColor: NSColor?
@@ -301,8 +347,6 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         // プレビューのみ
         let previewLabel = NSTextField(labelWithString: "")
-        previewLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
-        previewLabel.textColor = NSColor(white: 0.8, alpha: 1.0)
         previewLabel.backgroundColor = NSColor(white: 0.05, alpha: 1.0)
         previewLabel.drawsBackground = true
         previewLabel.isBordered = false
@@ -312,7 +356,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.translatesAutoresizingMaskIntoConstraints = false
         cellView.addSubview(previewLabel)
 
-        previewLabel.stringValue = getTerminalPreview(state.terminalView)
+        previewLabel.attributedStringValue = getTerminalPreview(state.terminalView)
 
         NSLayoutConstraint.activate([
             previewLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 16),
@@ -324,27 +368,69 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         return cellView
     }
 
-    func getTerminalPreview(_ terminalView: LocalProcessTerminalView) -> String {
+    func getTerminalPreview(_ terminalView: LocalProcessTerminalView) -> NSAttributedString {
         let terminal = terminalView.getTerminal()
         let buffer = terminal.buffer
-        var lines: [String] = []
+        var lineAttrs: [NSAttributedString] = []
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+
+        // TerminalViewから実際のネイティブ色を取得
+        let nativeFg = terminalView.nativeForegroundColor
+        let nativeBg = terminalView.nativeBackgroundColor
 
         // カーソル位置から上に遡って、コンテンツがある行を5行分取得
         var row = buffer.y
-        while lines.count < previewRows && row >= 0 {
+        while lineAttrs.count < previewRows && row >= 0 {
             if let line = terminal.getLine(row: row) {
-                var text = line.translateToString(trimRight: true)
+                let text = line.translateToString(trimRight: true)
                 if !text.isEmpty {
-                    if text.count > previewCols {
-                        text = String(text.prefix(previewCols))
+                    let attrStr = NSMutableAttributedString()
+                    let cols = min(previewCols, line.count)
+
+                    for col in 0..<cols {
+                        let charData = line[col]
+                        let char = charData.getCharacter()
+                        if char == "\u{0}" { continue }
+
+                        var fg = charData.attribute.fg
+                        var bg = charData.attribute.bg
+                        let style = charData.attribute.style
+
+                        // Handle inverse mode
+                        if style.contains(.inverse) {
+                            swap(&fg, &bg)
+                            if fg == .defaultColor { fg = .defaultInvertedColor }
+                            if bg == .defaultColor { bg = .defaultInvertedColor }
+                        }
+
+                        let fgColor = mapAttributeColor(fg, isForeground: true, nativeFg: nativeFg, nativeBg: nativeBg)
+                        let bgColor = mapAttributeColor(bg, isForeground: false, nativeFg: nativeFg, nativeBg: nativeBg)
+
+                        let attrs: [NSAttributedString.Key: Any] = [
+                            .font: font,
+                            .foregroundColor: fgColor,
+                            .backgroundColor: bgColor
+                        ]
+                        attrStr.append(NSAttributedString(string: String(char), attributes: attrs))
                     }
-                    lines.insert(text, at: 0)
+
+                    if attrStr.length > 0 {
+                        lineAttrs.insert(attrStr, at: 0)
+                    }
                 }
             }
             row -= 1
         }
 
-        return lines.joined(separator: "\n")
+        let result = NSMutableAttributedString()
+        for (i, lineAttr) in lineAttrs.enumerated() {
+            result.append(lineAttr)
+            if i < lineAttrs.count - 1 {
+                result.append(NSAttributedString(string: "\n"))
+            }
+        }
+
+        return result
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {

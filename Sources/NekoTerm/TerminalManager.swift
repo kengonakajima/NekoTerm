@@ -17,6 +17,10 @@ func createTerminal(delegate: LocalProcessTerminalViewDelegate, directory: Strin
     let terminalView = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     terminalView.processDelegate = delegate
 
+    // 見やすい色に設定
+    terminalView.nativeForegroundColor = NSColor(white: 0.9, alpha: 1.0)
+    terminalView.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
+
     let shell = getShell()
     let shellIdiom = "-" + (shell as NSString).lastPathComponent
 
