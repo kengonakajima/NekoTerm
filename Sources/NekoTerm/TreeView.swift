@@ -59,6 +59,10 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         setup()
     }
 
+    override var acceptsFirstResponder: Bool {
+        return false
+    }
+
     func setup() {
         dataSource = self
         delegate = self
