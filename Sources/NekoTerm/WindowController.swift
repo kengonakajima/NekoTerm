@@ -269,6 +269,9 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
 
     func clearBuffer() {
         guard let state = getSelectedTerminal() else { return }
+        let terminal = state.terminalView.getTerminal()
+        // ESC[3J でスクロールバックをクリア
+        terminal.feed(text: "\u{1b}[3J")
         // Ctrl-L を送信して画面クリア＋プロンプト再描画
         state.terminalView.send(txt: "\u{0C}")
     }
