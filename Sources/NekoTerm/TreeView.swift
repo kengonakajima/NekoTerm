@@ -2,6 +2,51 @@ import AppKit
 import SwiftTerm
 
 let previewRows = 5
+
+// プロセス名キャッシュ
+var processNameCache: [UUID: (name: String?, pgid: pid_t, time: Date)] = [:]
+
+// フォアグラウンドプロセス名を取得（キャッシュ付き）
+func getForegroundProcessName(for terminalView: LocalProcessTerminalView, terminalId: UUID) -> String? {
+    let shellPid = terminalView.process.shellPid
+    guard shellPid > 0 else { return nil }
+
+    // シェルのfdからフォアグラウンドプロセスグループを取得
+    let fd = terminalView.process.childfd
+    let foregroundPgid = tcgetpgrp(fd)
+    guard foregroundPgid > 0 else { return nil }
+
+    // キャッシュをチェック（同じpgidなら1秒間有効）
+    if let cached = processNameCache[terminalId],
+       cached.pgid == foregroundPgid,
+       Date().timeIntervalSince(cached.time) < 1.0 {
+        return cached.name
+    }
+
+    // プロセス名を取得 (psコマンドを使用)
+    let pipe = Pipe()
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/ps")
+    process.arguments = ["-p", "\(foregroundPgid)", "-o", "comm="]
+    process.standardOutput = pipe
+    process.standardError = FileHandle.nullDevice
+
+    do {
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let name = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            let shortName = (name as NSString).lastPathComponent
+            processNameCache[terminalId] = (shortName, foregroundPgid, Date())
+            return shortName
+        }
+    } catch {
+        processNameCache[terminalId] = (nil, foregroundPgid, Date())
+        return nil
+    }
+    processNameCache[terminalId] = (nil, foregroundPgid, Date())
+    return nil
+}
 let previewCols = 40
 
 // ANSI 256 color palette
@@ -123,19 +168,32 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func startRefreshTimer() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.refreshPreview()
         }
     }
 
     func refreshPreview() {
         guard let wc = windowController else { return }
-        isRefreshing = true
-        projectGroups = wc.buildProjectGroups()
-        reloadData()
-        expandAllGroups()
-        selectCurrentTerminal()
-        isRefreshing = false
+
+        // グループ構成が変わった場合のみフルリロード
+        let newGroups = wc.buildProjectGroups()
+        let needsFullReload = projectGroups.count != newGroups.count ||
+            zip(projectGroups, newGroups).contains { $0.name != $1.name || $0.terminalIds != $1.terminalIds }
+
+        if needsFullReload {
+            isRefreshing = true
+            projectGroups = newGroups
+            reloadData()
+            expandAllGroups()
+            selectCurrentTerminal()
+            isRefreshing = false
+        } else {
+            // 表示中の行だけ更新
+            let visibleRows = rows(in: visibleRect)
+            reloadData(forRowIndexes: IndexSet(integersIn: visibleRows.location..<visibleRows.location + visibleRows.length),
+                       columnIndexes: IndexSet(integer: 0))
+        }
     }
 
     func reloadTerminals() {
@@ -372,14 +430,15 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.autoresizingMask = [.width]
         cellView.addSubview(previewLabel)
 
-        // プレビュー内容を設定（ヒント番号を右上に）
-        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil)
+        // プレビュー内容を設定（プロセス名とヒント番号を1行目に）
+        let processName = getForegroundProcessName(for: state.terminalView, terminalId: state.id)
+        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: processName)
         previewLabel.attributedStringValue = preview
 
         return cellView
     }
 
-    func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil) -> NSAttributedString {
+    func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil, processName: String? = nil) -> NSAttributedString {
         let terminal = terminalView.getTerminal()
         let buffer = terminal.buffer
         var lineAttrs: [NSAttributedString] = []
@@ -435,48 +494,29 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         let result = NSMutableAttributedString()
 
-        // ヒントを最初の行の右端に追加
-        if let hint = hintIndex {
-            let hintStr = "[\(hint)]"
-            let hintWidth = hintStr.count + 1  // ヒント + スペース1つ
-            let maxFirstLineLength = previewCols - hintWidth - 5  // 余裕を持たせる
+        // 1行目: プロセス名（左）とヒント番号（右）
+        if processName != nil || hintIndex != nil {
+            let procName = processName ?? ""
+            let hintStr = hintIndex != nil ? "[\(hintIndex!)]" : ""
 
-            // 最初の行がある場合、切り詰めてからヒントを追加
-            if !lineAttrs.isEmpty {
-                let firstLine = lineAttrs[0]
-                let truncatedLine = NSMutableAttributedString()
+            // プロセス名とヒントの間をスペースで埋める
+            let totalLen = procName.count + hintStr.count
+            let paddingCount = max(1, previewCols - totalLen - 5)
+            let padding = String(repeating: " ", count: paddingCount)
 
-                // 最初の行を切り詰める
-                if firstLine.string.count > maxFirstLineLength {
-                    let truncated = firstLine.attributedSubstring(from: NSRange(location: 0, length: maxFirstLineLength))
-                    truncatedLine.append(truncated)
-                } else {
-                    truncatedLine.append(firstLine)
-                }
+            let headerLine = NSMutableAttributedString()
+            headerLine.append(NSAttributedString(
+                string: procName + padding + hintStr,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
+                ]
+            ))
+            lineAttrs.insert(headerLine, at: 0)
 
-                // パディングとヒントを追加
-                let currentLength = truncatedLine.string.count
-                let paddingCount = max(1, previewCols - hintWidth - currentLength - 3)
-                let padding = String(repeating: " ", count: paddingCount)
-
-                truncatedLine.append(NSAttributedString(
-                    string: padding + hintStr,
-                    attributes: [
-                        .font: font,
-                        .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
-                    ]
-                ))
-                lineAttrs[0] = truncatedLine
-            } else {
-                // プレビューが空の場合
-                let padding = String(repeating: " ", count: previewCols - hintWidth - 3)
-                lineAttrs.append(NSAttributedString(
-                    string: padding + hintStr,
-                    attributes: [
-                        .font: font,
-                        .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
-                    ]
-                ))
+            // 行数が多すぎる場合は最後の行を削除
+            if lineAttrs.count > previewRows {
+                lineAttrs.removeLast()
             }
         }
 
