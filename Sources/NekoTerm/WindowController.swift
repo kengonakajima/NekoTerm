@@ -80,7 +80,7 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
     // MARK: - Terminal Management
 
     func createTerminal(directory: String? = nil) -> TerminalState {
-        let terminalView = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        let terminalView = NekoTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         terminalView.processDelegate = self
 
         // 見やすい色に設定
