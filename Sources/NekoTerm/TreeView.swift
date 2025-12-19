@@ -287,42 +287,66 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let group = item as? ProjectGroup {
-            return makeGroupView(group)
+            let groupIndex = projectGroups.firstIndex(where: { $0.name == group.name }) ?? 0
+            return makeGroupView(group, index: groupIndex)
         }
         if let terminalId = item as? UUID,
            let wc = windowController,
            let state = wc.terminalStates.first(where: { $0.id == terminalId }) {
-            return makeTerminalView(state)
+            // グループ内でのインデックスを取得
+            if let group = projectGroups.first(where: { $0.terminalIds.contains(terminalId) }),
+               let terminalIndex = group.terminalIds.firstIndex(of: terminalId) {
+                return makeTerminalView(state, index: terminalIndex)
+            }
+            return makeTerminalView(state, index: 0)
         }
         return nil
     }
 
-    func makeGroupView(_ group: ProjectGroup) -> NSView {
-        let cellView = NSView()
+    func makeGroupView(_ group: ProjectGroup, index: Int) -> NSView {
+        let cellView = NSTableCellView()
 
-        let titleLabel = NSTextField(labelWithString: "")
-        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .bold)
-        titleLabel.textColor = NSColor(white: 0.7, alpha: 1.0)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        cellView.addSubview(titleLabel)
-
+        // タイトル（左側）
+        let titleText: String
         if group.name == "~" {
-            titleLabel.stringValue = "~"
+            titleText = "~"
         } else {
-            titleLabel.stringValue = "~/\(group.name)"
+            titleText = "~/\(group.name)"
         }
 
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),
-            titleLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
-            titleLabel.centerYAnchor.constraint(equalTo: cellView.centerYAnchor)
-        ])
+        let titleLabel = NSTextField(labelWithString: titleText)
+        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .bold)
+        titleLabel.textColor = NSColor(white: 0.7, alpha: 1.0)
+        titleLabel.drawsBackground = false
+        titleLabel.isBordered = false
+        titleLabel.isEditable = false
+        titleLabel.isSelectable = false
+        titleLabel.frame = NSRect(x: 8, y: 0, width: 150, height: 24)
+        cellView.addSubview(titleLabel)
+
+        // ヒント（右端に表示）
+        if index < 9 {
+            let hintLabel = NSTextField(labelWithString: "⌘\(index + 1)")
+            hintLabel.font = NSFont.systemFont(ofSize: 10)
+            hintLabel.textColor = NSColor(white: 0.5, alpha: 1.0)
+            hintLabel.drawsBackground = false
+            hintLabel.isBordered = false
+            hintLabel.isEditable = false
+            hintLabel.isSelectable = false
+            hintLabel.alignment = .right
+            hintLabel.sizeToFit()
+            // 列幅を取得して右端に配置
+            let columnWidth = outlineTableColumn?.width ?? 280
+            hintLabel.frame = NSRect(x: columnWidth - hintLabel.frame.width - 80, y: 4, width: hintLabel.frame.width, height: 16)
+            cellView.addSubview(hintLabel)
+        }
 
         return cellView
     }
 
-    func makeTerminalView(_ state: TerminalState) -> NSView {
+    func makeTerminalView(_ state: TerminalState, index: Int) -> NSView {
         let cellView = BackgroundView()
+        let cellHeight = CGFloat(previewRows * 12 + 8)
 
         // 現在選択中か、グループ内で最後に選択されたターミナルか
         let isCurrentlySelected = windowController?.selectedTerminalId == state.id
@@ -336,7 +360,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             cellView.backgroundColor = NSColor(red: 0.08, green: 0.12, blue: 0.2, alpha: 1.0)
         }
 
-        // プレビューのみ
+        // プレビュー
         let previewLabel = NSTextField(labelWithString: "")
         previewLabel.backgroundColor = NSColor(white: 0.05, alpha: 1.0)
         previewLabel.drawsBackground = true
@@ -344,22 +368,18 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.isEditable = false
         previewLabel.maximumNumberOfLines = previewRows
         previewLabel.lineBreakMode = .byClipping
-        previewLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewLabel.frame = NSRect(x: 4, y: 4, width: 240, height: cellHeight - 8)
+        previewLabel.autoresizingMask = [.width]
         cellView.addSubview(previewLabel)
 
-        previewLabel.attributedStringValue = getTerminalPreview(state.terminalView)
-
-        NSLayoutConstraint.activate([
-            previewLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 16),
-            previewLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
-            previewLabel.topAnchor.constraint(equalTo: cellView.topAnchor, constant: 4),
-            previewLabel.bottomAnchor.constraint(equalTo: cellView.bottomAnchor, constant: -4)
-        ])
+        // プレビュー内容を設定（ヒント番号を右上に）
+        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil)
+        previewLabel.attributedStringValue = preview
 
         return cellView
     }
 
-    func getTerminalPreview(_ terminalView: LocalProcessTerminalView) -> NSAttributedString {
+    func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil) -> NSAttributedString {
         let terminal = terminalView.getTerminal()
         let buffer = terminal.buffer
         var lineAttrs: [NSAttributedString] = []
@@ -414,6 +434,52 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         }
 
         let result = NSMutableAttributedString()
+
+        // ヒントを最初の行の右端に追加
+        if let hint = hintIndex {
+            let hintStr = "[\(hint)]"
+            let hintWidth = hintStr.count + 1  // ヒント + スペース1つ
+            let maxFirstLineLength = previewCols - hintWidth - 5  // 余裕を持たせる
+
+            // 最初の行がある場合、切り詰めてからヒントを追加
+            if !lineAttrs.isEmpty {
+                let firstLine = lineAttrs[0]
+                let truncatedLine = NSMutableAttributedString()
+
+                // 最初の行を切り詰める
+                if firstLine.string.count > maxFirstLineLength {
+                    let truncated = firstLine.attributedSubstring(from: NSRange(location: 0, length: maxFirstLineLength))
+                    truncatedLine.append(truncated)
+                } else {
+                    truncatedLine.append(firstLine)
+                }
+
+                // パディングとヒントを追加
+                let currentLength = truncatedLine.string.count
+                let paddingCount = max(1, previewCols - hintWidth - currentLength - 3)
+                let padding = String(repeating: " ", count: paddingCount)
+
+                truncatedLine.append(NSAttributedString(
+                    string: padding + hintStr,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
+                    ]
+                ))
+                lineAttrs[0] = truncatedLine
+            } else {
+                // プレビューが空の場合
+                let padding = String(repeating: " ", count: previewCols - hintWidth - 3)
+                lineAttrs.append(NSAttributedString(
+                    string: padding + hintStr,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
+                    ]
+                ))
+            }
+        }
+
         for (i, lineAttr) in lineAttrs.enumerated() {
             result.append(lineAttr)
             if i < lineAttrs.count - 1 {
