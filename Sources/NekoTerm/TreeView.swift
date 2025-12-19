@@ -485,13 +485,17 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         var lineAttrs: [NSAttributedString] = []
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
 
+        // ヘッダー行がある場合は1行少なく取得
+        let hasHeader = processName != nil || hintIndex != nil
+        let maxContentRows = hasHeader ? previewRows - 1 : previewRows
+
         // TerminalViewから実際のネイティブ色を取得
         let nativeFg = terminalView.nativeForegroundColor
         let nativeBg = terminalView.nativeBackgroundColor
 
-        // カーソル位置から上に遡って、コンテンツがある行を5行分取得
+        // カーソル位置から上に遡って、コンテンツがある行を取得
         var row = buffer.y
-        while lineAttrs.count < previewRows && row >= 0 {
+        while lineAttrs.count < maxContentRows && row >= 0 {
             if let line = terminal.getLine(row: row) {
                 let text = line.translateToString(trimRight: true)
                 if !text.isEmpty {
@@ -565,11 +569,6 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
                 ))
             }
             lineAttrs.insert(headerLine, at: 0)
-
-            // 行数が多すぎる場合は最後の行を削除
-            if lineAttrs.count > previewRows {
-                lineAttrs.removeLast()
-            }
         }
 
         for (i, lineAttr) in lineAttrs.enumerated() {
