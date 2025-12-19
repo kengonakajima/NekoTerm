@@ -30,7 +30,10 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
             defer: false
         )
         window.title = "NekoTerm"
-        window.center()
+        window.setFrameAutosaveName("MainWindow")
+        if window.frame.origin == .zero {
+            window.center()
+        }
 
         let contentBounds = window.contentView!.bounds
 
@@ -39,6 +42,7 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         splitView.dividerStyle = .thin
         splitView.autoresizingMask = [.width, .height]
         splitView.delegate = self
+        splitView.autosaveName = "MainSplitView"
 
         // 左ペイン（ツリービュー）
         leftPane = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: contentBounds.height))
@@ -62,7 +66,10 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
 
         window.contentView?.addSubview(splitView)
 
-        splitView.setPosition(200, ofDividerAt: 0)
+        // 保存された分割位置がない場合のみデフォルト値を設定
+        if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames MainSplitView") == nil {
+            splitView.setPosition(200, ofDividerAt: 0)
+        }
         splitView.adjustSubviews()
     }
 
@@ -87,9 +94,11 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         terminalView.nativeForegroundColor = NSColor(white: 0.9, alpha: 1.0)
         terminalView.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
 
-        // フォントをMonacoに設定
-        if let monaco = NSFont(name: "Monaco", size: 12) {
-            terminalView.font = monaco
+        // フォントを設定（保存された設定または デフォルトのMonaco 12pt）
+        let fontName = UserDefaults.standard.string(forKey: "TerminalFontName") ?? "Monaco"
+        let fontSize = UserDefaults.standard.object(forKey: "TerminalFontSize") as? CGFloat ?? 12
+        if let font = NSFont(name: fontName, size: fontSize) {
+            terminalView.font = font
         }
 
         let shell = getShell()
@@ -289,11 +298,27 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
                 state.terminalView.font = newFont
             }
         }
+        // フォントサイズを保存
+        if let firstState = terminalStates.first {
+            let font = firstState.terminalView.font
+            UserDefaults.standard.set(font.fontName, forKey: "TerminalFontName")
+            UserDefaults.standard.set(font.pointSize, forKey: "TerminalFontSize")
+        }
     }
 
     func resetFontSize() {
+        let defaultSize: CGFloat = 12
         for state in terminalStates {
-            state.terminalView.resetFontSize()
+            let currentFont = state.terminalView.font
+            if let newFont = NSFont(name: currentFont.fontName, size: defaultSize) {
+                state.terminalView.font = newFont
+            }
+        }
+        // フォントサイズを保存
+        if let firstState = terminalStates.first {
+            let font = firstState.terminalView.font
+            UserDefaults.standard.set(font.fontName, forKey: "TerminalFontName")
+            UserDefaults.standard.set(font.pointSize, forKey: "TerminalFontSize")
         }
     }
 
