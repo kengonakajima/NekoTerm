@@ -1,6 +1,26 @@
 import AppKit
 import SwiftTerm
 
+// iTerm2 Default color palette
+let iterm2Colors: [Color] = [
+    Color(red: 0, green: 0, blue: 0),           // 0 Black
+    Color(red: 51399, green: 6891, blue: 0),    // 1 Red (201, 27, 0)
+    Color(red: 0, green: 49551, blue: 0),       // 2 Green (0, 194, 0)
+    Color(red: 50823, green: 50052, blue: 0),   // 3 Yellow (199, 196, 0)
+    Color(red: 8995, green: 9509, blue: 50052), // 4 Blue (35, 37, 196)
+    Color(red: 51657, green: 12336, blue: 50823), // 5 Magenta (202, 48, 199)
+    Color(red: 0, green: 50309, blue: 50823),   // 6 Cyan (0, 197, 199)
+    Color(red: 65535, green: 65535, blue: 65535), // 7 White
+    Color(red: 26728, green: 26728, blue: 26728), // 8 Bright Black (104, 104, 104)
+    Color(red: 65535, green: 28270, blue: 26728), // 9 Bright Red (255, 110, 104)
+    Color(red: 24415, green: 64250, blue: 26728), // 10 Bright Green (95, 250, 104)
+    Color(red: 65535, green: 64764, blue: 26471), // 11 Bright Yellow (255, 252, 103)
+    Color(red: 26728, green: 29041, blue: 65535), // 12 Bright Blue (104, 113, 255)
+    Color(red: 65535, green: 30583, blue: 65535), // 13 Bright Magenta (255, 119, 255)
+    Color(red: 24672, green: 65021, blue: 65535), // 14 Bright Cyan (96, 253, 255)
+    Color(red: 65535, green: 65535, blue: 65535), // 15 Bright White
+]
+
 class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewDelegate {
     var window: NSWindow!
     var splitView: NSSplitView!
@@ -93,6 +113,9 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         // 見やすい色に設定
         terminalView.nativeForegroundColor = NSColor(white: 0.9, alpha: 1.0)
         terminalView.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
+
+        // iTerm2互換カラーパレット
+        terminalView.installColors(iterm2Colors)
 
         // フォントを設定（保存された設定または デフォルトのMonaco 12pt）
         let fontName = UserDefaults.standard.string(forKey: "TerminalFontName") ?? "Monaco"
