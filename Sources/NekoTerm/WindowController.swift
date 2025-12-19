@@ -87,6 +87,11 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         terminalView.nativeForegroundColor = NSColor(white: 0.9, alpha: 1.0)
         terminalView.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
 
+        // フォントをMonacoに設定
+        if let monaco = NSFont(name: "Monaco", size: 12) {
+            terminalView.font = monaco
+        }
+
         let shell = getShell()
         let shellIdiom = "-" + (shell as NSString).lastPathComponent
 
