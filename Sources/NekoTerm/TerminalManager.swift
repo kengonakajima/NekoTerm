@@ -7,6 +7,8 @@ struct TerminalState {
     var currentDirectory: String?
     var title: String
     var projectName: String
+    var lastActivityTime: Date = Date.distantPast  // 初期状態では灰色
+    var lastContentHash: Int? = nil  // nilなら初回チェック（緑にしない）
 }
 
 func getShell() -> String {

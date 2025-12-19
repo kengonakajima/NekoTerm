@@ -108,6 +108,18 @@ class BackgroundView: NSView {
     }
 }
 
+// 更新からの経過時間に応じてヒントの色を計算（20秒以内なら緑、それ以降は灰色）
+func getHintColor(elapsedTime: TimeInterval) -> NSColor {
+    let activeDuration: TimeInterval = 20
+    if elapsedTime < activeDuration {
+        // 20秒以内: 明るい緑
+        return NSColor(red: 0.2, green: 0.8, blue: 0.2, alpha: 1.0)
+    } else {
+        // 20秒以上経過: 灰色
+        return NSColor(white: 0.5, alpha: 1.0)
+    }
+}
+
 // プロジェクトグループを表すクラス
 class ProjectGroup {
     let name: String
@@ -430,15 +442,44 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.autoresizingMask = [.width]
         cellView.addSubview(previewLabel)
 
-        // プレビュー内容を設定（プロセス名とヒント番号を1行目に）
+        // 内容ハッシュを計算してlastActivityTimeを更新
         let processName = getForegroundProcessName(for: state.terminalView, terminalId: state.id)
-        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: processName)
+        var hintColor: NSColor = NSColor(white: 0.5, alpha: 1.0)
+
+        if let wc = windowController, let idx = wc.terminalStates.firstIndex(where: { $0.id == state.id }) {
+            // 一時的にプレビューを取得してハッシュを計算
+            let tempPreview = getTerminalPreview(state.terminalView, hintIndex: nil, processName: nil)
+            let currentHash = tempPreview.string.hashValue
+            let isSelected = wc.selectedTerminalId == state.id
+
+            if let lastHash = wc.terminalStates[idx].lastContentHash {
+                // 前回のハッシュがある場合: 変化があり、かつ選択中でなければ更新時刻を記録
+                if lastHash != currentHash {
+                    wc.terminalStates[idx].lastContentHash = currentHash
+                    if !isSelected {
+                        wc.terminalStates[idx].lastActivityTime = Date()
+                    }
+                }
+            } else {
+                // 初回チェック: ハッシュを記録するだけ（緑にしない）
+                wc.terminalStates[idx].lastContentHash = currentHash
+            }
+
+            // 経過時間に応じてヒントの色を計算（選択中でなければ）
+            if !isSelected {
+                let elapsed = Date().timeIntervalSince(wc.terminalStates[idx].lastActivityTime)
+                hintColor = getHintColor(elapsedTime: elapsed)
+            }
+        }
+
+        // プレビュー内容を設定（プロセス名とヒント番号を1行目に）
+        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: processName, hintColor: hintColor)
         previewLabel.attributedStringValue = preview
 
         return cellView
     }
 
-    func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil, processName: String? = nil) -> NSAttributedString {
+    func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil, processName: String? = nil, hintColor: NSColor? = nil) -> NSAttributedString {
         let terminal = terminalView.getTerminal()
         let buffer = terminal.buffer
         var lineAttrs: [NSAttributedString] = []
@@ -505,13 +546,24 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             let padding = String(repeating: " ", count: paddingCount)
 
             let headerLine = NSMutableAttributedString()
+            // プロセス名（灰色）
             headerLine.append(NSAttributedString(
-                string: procName + padding + hintStr,
+                string: procName + padding,
                 attributes: [
                     .font: font,
                     .foregroundColor: NSColor(white: 0.5, alpha: 1.0)
                 ]
             ))
+            // ヒント番号（色は経過時間に応じて変化）
+            if !hintStr.isEmpty {
+                headerLine.append(NSAttributedString(
+                    string: hintStr,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: hintColor ?? NSColor(white: 0.5, alpha: 1.0)
+                    ]
+                ))
+            }
             lineAttrs.insert(headerLine, at: 0)
 
             // 行数が多すぎる場合は最後の行を削除
