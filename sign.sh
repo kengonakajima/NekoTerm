@@ -39,8 +39,7 @@ echo "Signing..."
 bash scripts/sign-mac.sh \
   --app "${APP_DIR}" \
   --identity "Developer ID Application: KENGO NAKAJIMA (AD69GXLM5Y)" \
-  --profile SupercatNotary \
-  --keychain ~/Library/Keychains/login.keychain-db \
+  --profile NekoTermNotary \
   --entitlements scripts/entitlements.plist
 
 # DMG インストーラーを作成
