@@ -493,12 +493,40 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let nativeFg = terminalView.nativeForegroundColor
         let nativeBg = terminalView.nativeBackgroundColor
 
-        // 画面の最終行から上に遡って、コンテンツがある行を取得
-        var row = buffer.yDisp + terminal.rows - 1
+        // 画面の最終行から上に遡って、最初にコンテンツがある行を見つける
+        var lastContentRow = buffer.yDisp + terminal.rows - 1
+        while lastContentRow >= buffer.yDisp {
+            if let line = terminal.getLine(row: lastContentRow) {
+                // 空白以外の表示可能な文字があるかチェック
+                var hasContent = false
+                for col in 0..<line.count {
+                    let char = line[col].getCharacter()
+                    if char != " " && char != "\u{0}" && !char.isWhitespace {
+                        hasContent = true
+                        break
+                    }
+                }
+                if hasContent {
+                    break
+                }
+            }
+            lastContentRow -= 1
+        }
+
+        // コンテンツがある行から上にmaxContentRows行分を取得
+        var row = lastContentRow
         while lineAttrs.count < maxContentRows && row >= buffer.yDisp {
             if let line = terminal.getLine(row: row) {
-                let text = line.translateToString(trimRight: true)
-                if !text.isEmpty {
+                // 空白以外の表示可能な文字があるかチェック
+                var hasContent = false
+                for col in 0..<line.count {
+                    let char = line[col].getCharacter()
+                    if char != " " && char != "\u{0}" && !char.isWhitespace {
+                        hasContent = true
+                        break
+                    }
+                }
+                if hasContent {
                     let attrStr = NSMutableAttributedString()
                     let cols = min(previewCols, line.count)
 
