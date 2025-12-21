@@ -513,8 +513,13 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.autoresizingMask = [.width]
         cellView.addSubview(previewLabel)
 
-        // プロセス名を取得（キャッシュ付き）
-        let processName = getForegroundProcessName(for: state.terminalView, terminalId: state.id)
+        // 表示名を決定: OSCタイトルがあればそれを優先、なければプロセス名
+        let displayName: String?
+        if !state.title.isEmpty && state.title != "Terminal" {
+            displayName = state.title
+        } else {
+            displayName = getForegroundProcessName(for: state.terminalView, terminalId: state.id)
+        }
         var hintColor: NSColor = NSColor(white: 0.5, alpha: 1.0)
 
         // 経過時間に応じてヒントの色を計算
@@ -526,8 +531,8 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             }
         }
 
-        // プレビュー内容を設定（プロセス名とヒント番号を1行目に）
-        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: processName, hintColor: hintColor)
+        // プレビュー内容を設定（表示名とヒント番号を1行目に）
+        let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: displayName, hintColor: hintColor)
 
         // ハッシュを計算してlastActivityTimeを更新
         if let wc = windowController, let idx = wc.terminalStates.firstIndex(where: { $0.id == state.id }) {
