@@ -493,9 +493,9 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let nativeFg = terminalView.nativeForegroundColor
         let nativeBg = terminalView.nativeBackgroundColor
 
-        // カーソル位置から上に遡って、コンテンツがある行を取得
-        var row = buffer.y
-        while lineAttrs.count < maxContentRows && row >= 0 {
+        // 画面の最終行から上に遡って、コンテンツがある行を取得
+        var row = buffer.yDisp + terminal.rows - 1
+        while lineAttrs.count < maxContentRows && row >= buffer.yDisp {
             if let line = terminal.getLine(row: row) {
                 let text = line.translateToString(trimRight: true)
                 if !text.isEmpty {

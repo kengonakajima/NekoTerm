@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# NekoTerm をビルド、署名、公証、DMG作成するスクリプト
+# Nekotty をビルド、署名、公証、DMG作成するスクリプト
 
 cd "$(dirname "$0")"
 
 # リリースビルド
-echo "Building NekoTerm..."
+echo "Building Nekotty..."
 swift build -c release
 
 # .app バンドルを作成
 echo "Creating app bundle..."
-APP_DIR="dist/NekoTerm.app"
+APP_DIR="dist/Nekotty.app"
 rm -rf dist
 mkdir -p "${APP_DIR}/Contents/MacOS"
 mkdir -p "${APP_DIR}/Contents/Resources"
 
 # バイナリをコピー
-cp .build/release/NekoTerm "${APP_DIR}/Contents/MacOS/"
+cp .build/release/Nekotty "${APP_DIR}/Contents/MacOS/"
 
 # Info.plist をコピー
 cp scripts/Info.plist "${APP_DIR}/Contents/"
@@ -43,14 +43,14 @@ bash scripts/sign-mac.sh \
   --entitlements scripts/entitlements.plist
 
 # DMG インストーラーを作成
-dmg_path="dist/NekoTerm_${git_sha}_${current_date}.dmg"
+dmg_path="dist/Nekotty_${git_sha}_${current_date}.dmg"
 echo "Creating DMG..."
 create-dmg \
-  --volname "NekoTerm" \
+  --volname "Nekotty" \
   --window-pos 200 120 \
   --window-size 600 400 \
   --icon-size 100 \
-  --icon "NekoTerm.app" 150 185 \
+  --icon "Nekotty.app" 150 185 \
   --app-drop-link 450 185 \
   "${dmg_path}" \
   "${APP_DIR}"

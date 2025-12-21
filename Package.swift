@@ -3,14 +3,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "NekoTerm",
+    name: "Nekotty",
     platforms: [.macOS(.v13)],
     dependencies: [
         .package(path: "../SwiftTerm")
     ],
     targets: [
         .executableTarget(
-            name: "NekoTerm",
+            name: "Nekotty",
             dependencies: ["SwiftTerm"]
         )
     ]

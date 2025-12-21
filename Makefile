@@ -4,13 +4,13 @@ build:
 	swift build
 
 run: build
-	.build/debug/NekoTerm
+	.build/debug/Nekotty
 
 release:
 	swift build -c release
 
 run-release: release
-	.build/release/NekoTerm
+	.build/release/Nekotty
 
 clean:
 	swift package clean
@@ -18,13 +18,13 @@ clean:
 
 app: release
 	@echo "Creating app bundle..."
-	@rm -rf dist/NekoTerm.app
-	@mkdir -p dist/NekoTerm.app/Contents/MacOS
-	@mkdir -p dist/NekoTerm.app/Contents/Resources
-	@cp .build/release/NekoTerm dist/NekoTerm.app/Contents/MacOS/
-	@cp scripts/Info.plist dist/NekoTerm.app/Contents/
-	@cp scripts/AppIcon.icns dist/NekoTerm.app/Contents/Resources/
-	@echo "App bundle created: dist/NekoTerm.app"
+	@rm -rf dist/Nekotty.app
+	@mkdir -p dist/Nekotty.app/Contents/MacOS
+	@mkdir -p dist/Nekotty.app/Contents/Resources
+	@cp .build/release/Nekotty dist/Nekotty.app/Contents/MacOS/
+	@cp scripts/Info.plist dist/Nekotty.app/Contents/
+	@cp scripts/AppIcon.icns dist/Nekotty.app/Contents/Resources/
+	@echo "App bundle created: dist/Nekotty.app"
 
 sign: app
 	./sign.sh

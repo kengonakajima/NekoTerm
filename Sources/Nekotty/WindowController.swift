@@ -49,7 +49,7 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
             backing: .buffered,
             defer: false
         )
-        window.title = "NekoTerm"
+        window.title = "Nekotty"
         window.setFrameAutosaveName("MainWindow")
         if window.frame.origin == .zero {
             window.center()
@@ -510,7 +510,7 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
             treeView.reloadTerminals()
         }
         if let selected = getSelectedTerminal(), selected.terminalView === source {
-            window.title = title.isEmpty ? "NekoTerm" : title
+            window.title = title.isEmpty ? "Nekotty" : title
         }
     }
 
