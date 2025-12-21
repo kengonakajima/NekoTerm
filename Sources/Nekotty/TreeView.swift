@@ -217,9 +217,28 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         if needsFullReload {
             isRefreshing = true
+
+            // 折りたたまれていたグループを保存
+            var collapsedGroups = Set<String>()
+            for group in projectGroups {
+                if !isItemExpanded(group) {
+                    collapsedGroups.insert(group.name)
+                }
+            }
+
             projectGroups = newGroups
             reloadData()
-            expandAllGroups()
+
+            // 展開状態を復元（折りたたまれていたグループ以外は展開）
+            NSAnimationContext.beginGrouping()
+            NSAnimationContext.current.duration = 0
+            for group in projectGroups {
+                if !collapsedGroups.contains(group.name) {
+                    expandItem(group)
+                }
+            }
+            NSAnimationContext.endGrouping()
+
             selectCurrentTerminal()
             isRefreshing = false
         } else {
@@ -241,9 +260,28 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     func reloadTerminals() {
         guard let wc = windowController else { return }
         isRefreshing = true
+
+        // 折りたたまれていたグループを保存
+        var collapsedGroups = Set<String>()
+        for group in projectGroups {
+            if !isItemExpanded(group) {
+                collapsedGroups.insert(group.name)
+            }
+        }
+
         projectGroups = wc.buildProjectGroups()
         reloadData()
-        expandAllGroups()
+
+        // 展開状態を復元（折りたたまれていたグループ以外は展開）
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        for group in projectGroups {
+            if !collapsedGroups.contains(group.name) {
+                expandItem(group)
+            }
+        }
+        NSAnimationContext.endGrouping()
+
         selectCurrentTerminal()
         isRefreshing = false
     }
