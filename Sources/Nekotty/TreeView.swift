@@ -6,7 +6,7 @@ let previewRows = 5
 // プロセス名キャッシュ
 var processNameCache: [UUID: (name: String?, pgid: pid_t, time: Date)] = [:]
 
-// フォアグラウンドプロセス名を取得（キャッシュ付き）
+// フォアグラウンドプロセス名を取得（キャッシュ付き、非同期でバックグラウンド取得）
 func getForegroundProcessName(for terminalView: LocalProcessTerminalView, terminalId: UUID) -> String? {
     let shellPid = terminalView.process.shellPid
     guard shellPid > 0 else { return nil }
@@ -16,35 +16,47 @@ func getForegroundProcessName(for terminalView: LocalProcessTerminalView, termin
     let foregroundPgid = tcgetpgrp(fd)
     guard foregroundPgid > 0 else { return nil }
 
-    // キャッシュをチェック（同じpgidなら1秒間有効）
+    // キャッシュをチェック（同じpgidなら3秒間有効）
     if let cached = processNameCache[terminalId],
        cached.pgid == foregroundPgid,
-       Date().timeIntervalSince(cached.time) < 1.0 {
+       Date().timeIntervalSince(cached.time) < 3.0 {
         return cached.name
     }
 
-    // プロセス名を取得 (psコマンドを使用)
-    let pipe = Pipe()
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/ps")
-    process.arguments = ["-p", "\(foregroundPgid)", "-o", "comm="]
-    process.standardOutput = pipe
-    process.standardError = FileHandle.nullDevice
+    // キャッシュがない場合は非同期で取得を開始し、今回はnilを返す
+    DispatchQueue.global(qos: .utility).async {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-p", "\(foregroundPgid)", "-o", "comm="]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
 
-    do {
-        try process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        if let name = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            let shortName = (name as NSString).lastPathComponent
-            processNameCache[terminalId] = (shortName, foregroundPgid, Date())
-            return shortName
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let name = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                let shortName = (name as NSString).lastPathComponent
+                DispatchQueue.main.async {
+                    processNameCache[terminalId] = (shortName, foregroundPgid, Date())
+                }
+            } else {
+                DispatchQueue.main.async {
+                    processNameCache[terminalId] = (nil, foregroundPgid, Date())
+                }
+            }
+        } catch {
+            DispatchQueue.main.async {
+                processNameCache[terminalId] = (nil, foregroundPgid, Date())
+            }
         }
-    } catch {
-        processNameCache[terminalId] = (nil, foregroundPgid, Date())
-        return nil
     }
-    processNameCache[terminalId] = (nil, foregroundPgid, Date())
+
+    // 古いキャッシュがあればそれを返す（pgidが変わっていても）
+    if let cached = processNameCache[terminalId] {
+        return cached.name
+    }
     return nil
 }
 let previewCols = 40
@@ -105,6 +117,16 @@ class BackgroundView: NSView {
             dirtyRect.fill()
         }
         super.draw(dirtyRect)
+    }
+}
+
+// 背景色を描画できるNSTableCellView（グループ見出し用）
+class BackgroundTableCellView: NSTableCellView {
+    var bgColor: NSColor? {
+        didSet {
+            wantsLayer = true
+            layer?.backgroundColor = bgColor?.cgColor
+        }
     }
 }
 
@@ -201,10 +223,18 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
             selectCurrentTerminal()
             isRefreshing = false
         } else {
-            // 表示中の行だけ更新
+            // 表示中のターミナル行だけ更新（グループ行は除外）
             let visibleRows = rows(in: visibleRect)
-            reloadData(forRowIndexes: IndexSet(integersIn: visibleRows.location..<visibleRows.location + visibleRows.length),
-                       columnIndexes: IndexSet(integer: 0))
+            var terminalRowIndexes = IndexSet()
+            for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
+                let item = self.item(atRow: row)
+                if item is UUID {
+                    terminalRowIndexes.insert(row)
+                }
+            }
+            if !terminalRowIndexes.isEmpty {
+                reloadData(forRowIndexes: terminalRowIndexes, columnIndexes: IndexSet(integer: 0))
+            }
         }
     }
 
@@ -219,9 +249,12 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func expandAllGroups() {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
         for group in projectGroups {
             expandItem(group)
         }
+        NSAnimationContext.endGrouping()
     }
 
     func selectCurrentTerminal() {
@@ -391,7 +424,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         titleLabel.isBordered = false
         titleLabel.isEditable = false
         titleLabel.isSelectable = false
-        titleLabel.frame = NSRect(x: 8, y: 0, width: 150, height: 24)
+        titleLabel.frame = NSRect(x: 20, y: 0, width: 150, height: 24)
         cellView.addSubview(titleLabel)
 
         // ヒント（右端に表示）
@@ -442,30 +475,13 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         previewLabel.autoresizingMask = [.width]
         cellView.addSubview(previewLabel)
 
-        // 内容ハッシュを計算してlastActivityTimeを更新
+        // プロセス名を取得（キャッシュ付き）
         let processName = getForegroundProcessName(for: state.terminalView, terminalId: state.id)
         var hintColor: NSColor = NSColor(white: 0.5, alpha: 1.0)
 
+        // 経過時間に応じてヒントの色を計算
         if let wc = windowController, let idx = wc.terminalStates.firstIndex(where: { $0.id == state.id }) {
-            // 一時的にプレビューを取得してハッシュを計算
-            let tempPreview = getTerminalPreview(state.terminalView, hintIndex: nil, processName: nil)
-            let currentHash = tempPreview.string.hashValue
             let isSelected = wc.selectedTerminalId == state.id
-
-            if let lastHash = wc.terminalStates[idx].lastContentHash {
-                // 前回のハッシュがある場合: 変化があり、かつ選択中でなければ更新時刻を記録
-                if lastHash != currentHash {
-                    wc.terminalStates[idx].lastContentHash = currentHash
-                    if !isSelected {
-                        wc.terminalStates[idx].lastActivityTime = Date()
-                    }
-                }
-            } else {
-                // 初回チェック: ハッシュを記録するだけ（緑にしない）
-                wc.terminalStates[idx].lastContentHash = currentHash
-            }
-
-            // 経過時間に応じてヒントの色を計算（選択中でなければ）
             if !isSelected {
                 let elapsed = Date().timeIntervalSince(wc.terminalStates[idx].lastActivityTime)
                 hintColor = getHintColor(elapsedTime: elapsed)
@@ -474,6 +490,24 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         // プレビュー内容を設定（プロセス名とヒント番号を1行目に）
         let preview = getTerminalPreview(state.terminalView, hintIndex: index < 9 ? index + 1 : nil, processName: processName, hintColor: hintColor)
+
+        // ハッシュを計算してlastActivityTimeを更新
+        if let wc = windowController, let idx = wc.terminalStates.firstIndex(where: { $0.id == state.id }) {
+            let currentHash = preview.string.hashValue
+            let isSelected = wc.selectedTerminalId == state.id
+
+            if let lastHash = wc.terminalStates[idx].lastContentHash {
+                if lastHash != currentHash {
+                    wc.terminalStates[idx].lastContentHash = currentHash
+                    if !isSelected {
+                        wc.terminalStates[idx].lastActivityTime = Date()
+                    }
+                }
+            } else {
+                wc.terminalStates[idx].lastContentHash = currentHash
+            }
+        }
+
         previewLabel.attributedStringValue = preview
 
         return cellView
@@ -481,7 +515,6 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     func getTerminalPreview(_ terminalView: LocalProcessTerminalView, hintIndex: Int? = nil, processName: String? = nil, hintColor: NSColor? = nil) -> NSAttributedString {
         let terminal = terminalView.getTerminal()
-        let buffer = terminal.buffer
         var lineAttrs: [NSAttributedString] = []
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
 
@@ -493,9 +526,9 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let nativeFg = terminalView.nativeForegroundColor
         let nativeBg = terminalView.nativeBackgroundColor
 
-        // 画面の最終行から上に遡って、最初にコンテンツがある行を見つける
-        var lastContentRow = buffer.yDisp + terminal.rows - 1
-        while lastContentRow >= buffer.yDisp {
+        // 画面の最終行から上に遡って、最初にコンテンツがある行を見つける（画面上の相対行番号を使用）
+        var lastContentRow = terminal.rows - 1
+        while lastContentRow >= 0 {
             if let line = terminal.getLine(row: lastContentRow) {
                 // 空白以外の表示可能な文字があるかチェック
                 var hasContent = false
@@ -515,7 +548,7 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         // コンテンツがある行から上にmaxContentRows行分を取得
         var row = lastContentRow
-        while lineAttrs.count < maxContentRows && row >= buffer.yDisp {
+        while lineAttrs.count < maxContentRows && row >= 0 {
             if let line = terminal.getLine(row: row) {
                 // 空白以外の表示可能な文字があるかチェック
                 var hasContent = false
@@ -616,6 +649,14 @@ class TreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
         let item = self.item(atRow: row)
         if let terminalId = item as? UUID {
             onSelectionChanged?(terminalId)
+        }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, didAdd rowView: NSTableRowView, forRow row: Int) {
+        let item = outlineView.item(atRow: row)
+        if item is ProjectGroup {
+            rowView.backgroundColor = NSColor(red: 0.1, green: 0.15, blue: 0.25, alpha: 1.0)
+            rowView.selectionHighlightStyle = .none
         }
     }
 }
