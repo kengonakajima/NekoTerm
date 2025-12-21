@@ -11,7 +11,9 @@
 
 <p align="center">
   ターミナルエージェント、サーバー、監視ツールなどをいくつも起動するような状況向け。
+</p>
 
+<p align="center">
   実装はSwiftTermベースで、macOS専用。
   SwiftTermのCJKに関わる問題やいくつかの描画のバグを修正しています。  
 </p>
