@@ -13,6 +13,18 @@ class NekoTerminalView: LocalProcessTerminalView {
     var lastMouseLocation: NSPoint?
     var isOverUrl = false
 
+    // autoresizingMaskによるリサイズ時にPTYサイズを更新
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        // cellDimensionがまだ初期化されていない場合はスキップ
+        guard cellDimension.width > 0 && cellDimension.height > 0 else { return }
+        let newCols = Int(newSize.width / cellDimension.width)
+        let newRows = Int(newSize.height / cellDimension.height)
+        if newCols != terminal.cols || newRows != terminal.rows {
+            resize(cols: newCols, rows: newRows)
+        }
+    }
+
     override func cursorUpdate(with event: NSEvent) {
         if commandKeyDown && isOverUrl {
             NSCursor.pointingHand.set()
