@@ -5,7 +5,17 @@
 <h1 align="center">Nekotty</h1>
 
 <p align="center">
-SwiftTermベースのmacOS用ターミナルエミュレータ。左ペインにターミナルのツリービューを表示する。
+  ターミナルを縦に並べてグループ化し、中身を5行だけ表示する、
+  実験的なmacOS用のターミナルアプリ。
+</p>
+
+<p align="center">
+  ターミナルエージェント、サーバー、監視ツールなどをいくつも起動するような状況向け。
+</p>
+
+<p align="center">
+  実装はSwiftTermベースで、macOS専用。
+  SwiftTermのCJKに関わる問題やいくつかの描画のバグを修正しています。  
 </p>
 
 ![Screenshot](ss.png)
