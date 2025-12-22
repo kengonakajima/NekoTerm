@@ -8,15 +8,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenu()
 
-        // 最初のウィンドウを作成
+        // 保存されたディレクトリがあれば復元、なければ新規作成
         let wc = WindowController()
-        wc.createInitialTerminal()
+        let savedDirectories = UserDefaults.standard.stringArray(forKey: "SavedTerminalDirectories") ?? []
+        if savedDirectories.isEmpty {
+            wc.createInitialTerminal()
+        } else {
+            for dir in savedDirectories {
+                _ = wc.createTerminal(directory: dir)
+            }
+            if let firstId = wc.terminalStates.first?.id {
+                wc.selectTerminal(id: firstId)
+            }
+            wc.treeView.reloadTerminals()
+            wc.showSelectedTerminal()
+        }
         wc.show()
         windowControllers.append(wc)
 
         NSApp.activate(ignoringOtherApps: true)
 
         setupKeyMonitor()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // 全ターミナルのディレクトリを保存
+        var directories: [String] = []
+        for wc in windowControllers {
+            for state in wc.terminalStates {
+                if let dir = state.currentDirectory {
+                    directories.append(dir)
+                } else {
+                    directories.append(FileManager.default.homeDirectoryForCurrentUser.path)
+                }
+            }
+        }
+        UserDefaults.standard.set(directories, forKey: "SavedTerminalDirectories")
     }
 
     func setupKeyMonitor() {
