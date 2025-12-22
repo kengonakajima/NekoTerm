@@ -62,7 +62,6 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         splitView.dividerStyle = .thin
         splitView.autoresizingMask = [.width, .height]
         splitView.delegate = self
-        splitView.autosaveName = "MainSplitView"
 
         // 左ペイン（ツリービュー）
         leftPane = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: contentBounds.height))
@@ -85,12 +84,15 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
         splitView.addArrangedSubview(terminalContainer)
 
         window.contentView?.addSubview(splitView)
-
-        // 保存された分割位置がない場合のみデフォルト値を設定
-        if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames MainSplitView") == nil {
-            splitView.setPosition(200, ofDividerAt: 0)
-        }
+        splitView.setPosition(200, ofDividerAt: 0)
         splitView.adjustSubviews()
+    }
+
+    func saveSplitViewPosition() {
+        let position = splitView.subviews[0].frame.width
+        if position >= 150 {
+            UserDefaults.standard.set(Double(position), forKey: "SplitViewPosition")
+        }
     }
 
     func createInitialTerminal() {
@@ -102,6 +104,17 @@ class WindowController: NSObject, LocalProcessTerminalViewDelegate, NSSplitViewD
 
     func show() {
         window.makeKeyAndOrderFront(nil)
+        // ウィンドウ表示後にsplitView位置を復元
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreSplitViewPosition()
+        }
+    }
+
+    func restoreSplitViewPosition() {
+        let savedPosition = UserDefaults.standard.double(forKey: "SplitViewPosition")
+        if savedPosition >= 150 {
+            splitView.setPosition(CGFloat(savedPosition), ofDividerAt: 0)
+        }
     }
 
     // MARK: - Terminal Management

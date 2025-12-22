@@ -42,6 +42,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     directories.append(FileManager.default.homeDirectoryForCurrentUser.path)
                 }
             }
+            // スプリットビューの位置を保存
+            wc.saveSplitViewPosition()
         }
         UserDefaults.standard.set(directories, forKey: "SavedTerminalDirectories")
     }
